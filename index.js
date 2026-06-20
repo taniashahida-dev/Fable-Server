@@ -1,21 +1,18 @@
 require("dotenv").config();
-const express = require("express") 
+const express = require("express");
 const app = express();
 const port = process.env.PORT || 8000;
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-// const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
+
 const uri = process.env.MONGODB_URI;
 
 app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
-
-
-
+  res.send('Hello World!');
+});
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -28,76 +25,109 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-  await client.connect();
-     const db = client.db("Fable-db");
+    await client.connect();
+    const db = client.db("Fable-db");
 
-  const eBookCollection = db.collection("ebooks");
+    // Declaring collections ONLY ONCE to avoid server crash
+    const eBookCollection = db.collection("ebooks");
+    const usersCollection = db.collection("user"); 
 
-
-app.post('/api/ebooks', async(req,res)=>{
-  const ebook = req.body
-  const newEbook = {
-    ...ebook,
-   createdAt : new Date()
-  } 
-  console.log(ebook)
-  const result = await eBookCollection.insertOne(newEbook)
-
-  res.send(result)
-})
-
- app.get('/api/ebooks', async (req, res) => {
-            const query = {};
-            if (req.query.writerId) {
-                query.writerId = req.query.writerId;
-            }
-            if (req.query.status) {
-                query.status = req.query.status;
-            }
-            const cursor = eBookCollection.find(query);
-            const result = await cursor.toArray();
-            res.send(result);
-        })
-
-
+    // API Route to fetch all registered writers or a single writer profile safely
+    app.get('/api/writers', async (req, res) => {
+      try {
+        const query = { role: 'writer' };
         
-       app.get('/api/ebooks/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
+        if (req.query.writerId) {
+          const writerId = req.query.writerId;
+          
+          if (!ObjectId.isValid(writerId)) {
+            return res.status(400).send({ error: true, message: "Invalid Writer ID format" });
+          }
+          
+          query._id = new ObjectId(writerId);
+        }
+        
+        const cursor = usersCollection.find(query);
+        const result = await cursor.toArray();
+        
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
+    });
 
-   
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({ error: true, message: "Invalid ID format" });
-    }
+    // API Route to publish / insert a new ebook listing
+    app.post('/api/ebooks', async (req, res) => {
+      try {
+        const ebook = req.body;
+        const newEbook = {
+          ...ebook,
+          createdAt: new Date()
+        };
+        const result = await eBookCollection.insertOne(newEbook);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
+    });
 
-    const query = { _id: new ObjectId(id) };
-    const result = await eBookCollection.findOne(query);
-    
-    if (!result) {
-      return res.status(404).send({ error: true, message: "Ebook not found" });
-    }
-    
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ error: true, message: error.message });
-  }
-});
+    // API Route to fetch multiple ebooks based on dynamic filtering (e.g., writerId or status)
+    app.get('/api/ebooks', async (req, res) => {
+      try {
+        const query = {};
+        if (req.query.writerId) {
+          query.writerId = req.query.writerId;
+        }
+        if (req.query.status) {
+          query.status = req.query.status;
+        }
+        const cursor = eBookCollection.find(query);
+        const result = await cursor.toArray();
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
+    });
 
-app.patch('/api/ebooks/:id', async (req, res) => {
+    // API Route to fetch metadata of a specific standalone ebook document
+    app.get('/api/ebooks/:id', async (req, res) => {
       try {
         const id = req.params.id;
-        const { status } = req.body;
+       
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ error: true, message: "Invalid ID format" });
+        }
+        const query = { _id: new ObjectId(id) };
+        const result = await eBookCollection.findOne(query);
         
-        // Create query using MongoDB ObjectId
+        if (!result) {
+          return res.status(404).send({ error: true, message: "Ebook not found" });
+        }
+        
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
+    });
+
+    // API Route to modify / update specific fields of an ebook document dynamically
+    app.patch('/api/ebooks/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updateData = req.body; 
+        
         const filter = { _id: new ObjectId(id) };
         
-        // Define the updated fields
         const updateDoc = {
           $set: {
-            status: status,
-            updatedAt: new Date() // Tracking the modification time
+            ...updateData,      
+            updatedAt: new Date() 
           },
         };
+
+        if (updateData.title) {
+           updateDoc.$set.status = 'Pending'; 
+        }
 
         const result = await eBookCollection.updateOne(filter, updateDoc);
         res.send(result);
@@ -106,8 +136,8 @@ app.patch('/api/ebooks/:id', async (req, res) => {
       }
     });
 
-
-        app.delete('/api/ebooks/:id', async (req, res) => {
+    // API Route to remove / delete an ebook permanently from the database index
+    app.delete('/api/ebooks/:id', async (req, res) => {
       try {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -118,21 +148,18 @@ app.patch('/api/ebooks/:id', async (req, res) => {
         res.status(500).send({ error: true, message: error.message });
       }
     });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
+    // Keep client connection pool active
     // await client.close()
   }
-};
+}
 
 run().catch(console.dir);
 
-
-
-
-
-
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+  console.log(`Example app listening on port ${port}`);
+});
