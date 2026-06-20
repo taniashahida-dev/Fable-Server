@@ -16,5 +16,8 @@
     "express": "^5.2.1",
     "jose-node-cjs-runtime": "^5.10.0",
     "mongodb": "^7.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0"
   }
 }

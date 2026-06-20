@@ -1,7 +1,7 @@
 require("dotenv").config();
-const express = require("express");
+const express = require("express") 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 8000;
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 // const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
@@ -28,12 +28,23 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
- 
+  await client.connect();
      const db = client.db("Fable-db");
 
+  const eBookCollection = db.collection("ebooks");
 
 
+app.post('/api/ebooks', async(req,res)=>{
+  const ebook = req.body
+  const newEbook = {
+    ...ebook,
+   createdAt : new Date()
+  } 
+  console.log(ebook)
+  const result = await eBookCollection.insertOne(newEbook)
 
+  res.send(result)
+})
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
