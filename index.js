@@ -61,6 +61,63 @@ app.post('/api/ebooks', async(req,res)=>{
 
 
         
+       app.get('/api/ebooks/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+
+   
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({ error: true, message: "Invalid ID format" });
+    }
+
+    const query = { _id: new ObjectId(id) };
+    const result = await eBookCollection.findOne(query);
+    
+    if (!result) {
+      return res.status(404).send({ error: true, message: "Ebook not found" });
+    }
+    
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+app.patch('/api/ebooks/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { status } = req.body;
+        
+        // Create query using MongoDB ObjectId
+        const filter = { _id: new ObjectId(id) };
+        
+        // Define the updated fields
+        const updateDoc = {
+          $set: {
+            status: status,
+            updatedAt: new Date() // Tracking the modification time
+          },
+        };
+
+        const result = await eBookCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
+    });
+
+
+        app.delete('/api/ebooks/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        
+        const result = await eBookCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: true, message: error.message });
+      }
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
