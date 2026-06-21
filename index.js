@@ -71,23 +71,71 @@ async function run() {
       }
     });
 
-    // API Route to fetch multiple ebooks based on dynamic filtering (e.g., writerId or status)
-    app.get('/api/ebooks', async (req, res) => {
-      try {
-        const query = {};
-        if (req.query.writerId) {
-          query.writerId = req.query.writerId;
-        }
-        if (req.query.status) {
-          query.status = req.query.status;
-        }
-        const cursor = eBookCollection.find(query);
-        const result = await cursor.toArray();
-        res.send(result);
-      } catch (error) {
-        res.status(500).send({ error: true, message: error.message });
-      }
-    });
+
+
+    
+
+   app.get('/api/ebooks', async (req, res) => {
+  try {
+    const search = req.query.search || "";
+    const category = req.query.category || "";
+    const availability = req.query.availability || "all";
+    const sortBy = req.query.sortBy || "newest";
+
+    // 1. Initialize your query object exactly like your existing structure
+    const query = {};
+
+    // Existing condition 1: Filter by writerId if provided
+    if (req.query.writerId) {
+      query.writerId = req.query.writerId;
+    }
+
+    // Existing condition 2: Filter by status if provided
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+
+    // NEW CONDITION: REGEX SEARCH (Matches book title or writer name)
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { writerName: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    // NEW CONDITION: CATEGORY FILTER (Matches book genre/category)
+    if (category && category !== "all") {
+      query.category = { $regex: new RegExp(`^${category}$`, "i") };
+    }
+
+    // NEW CONDITION: AVAILABILITY FILTER (Based on salesCount logic)
+    if (availability === "in-stock") {
+      query.$or = [{ salesCount: { $exists: false } }, { salesCount: 0 }];
+    } else if (availability === "sold") {
+      query.salesCount = { $gt: 0 };
+    }
+
+    // 2. Setup Sorting configurations
+    let sortOptions = {};
+    if (sortBy === "price-low") {
+      sortOptions.price = 1;
+    } else if (sortBy === "price-high") {
+      sortOptions.price = -1;
+    } else {
+      sortOptions.createdAt = -1; // Default: Newest first
+    }
+
+    // 3. Fetch from MongoDB Collection using your updated query and sort rules
+    const cursor = eBookCollection.find(query).sort(sortOptions);
+    const result = await cursor.toArray();
+    
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
 
     // API Route to fetch metadata of a specific standalone ebook document
     app.get('/api/ebooks/:id', async (req, res) => {
