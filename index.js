@@ -31,6 +31,32 @@ async function run() {
     // Declaring collections ONLY ONCE to avoid server crash
     const eBookCollection = db.collection("ebooks");
     const usersCollection = db.collection("user"); 
+const bookmarkCollection = db.collection("bookmarks"); 
+
+
+
+app.post("/api/bookmarks", async (req, res) => {
+  try {
+    const { bookId, userEmail, price } = req.body;
+
+    if (!userEmail) return res.status(400).send({ error: true, message: "User session not found" });
+    const isExist = await bookmarkCollection.findOne({ bookId, userEmail });
+    if (isExist) return res.send({ success: false, message: "Already bookmarked this book" });
+    const bookmarkData = {
+      ...req.body,
+      price: parseFloat(price),
+      createdAt: new Date()
+    };
+
+    const result = await bookmarkCollection.insertOne(bookmarkData);
+    res.send({ success: true, message: "Bookmarked successfully!", result });
+
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
 
     // API Route to fetch all registered writers or a single writer profile safely
     app.get('/api/writers', async (req, res) => {
