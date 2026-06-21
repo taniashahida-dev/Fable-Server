@@ -35,6 +35,29 @@ const bookmarkCollection = db.collection("bookmarks");
 
 
 
+app.delete("/api/bookmarks/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const query = { _id: new ObjectId(id) };
+    const result = await bookmarkCollection.deleteOne(query);
+    res.send({ success: true, result });
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
+app.get("/api/bookmarks", async (req, res) => {
+  try {
+    const userEmail = req.query.email;
+    if (!userEmail) return res.status(400).send({ error: true, message: "Email query parameter is required" });
+    const result = await bookmarkCollection.find({ userEmail }).toArray();
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
 app.post("/api/bookmarks", async (req, res) => {
   try {
     const { bookId, userEmail, price } = req.body;
