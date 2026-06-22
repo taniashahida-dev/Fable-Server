@@ -32,6 +32,49 @@ async function run() {
     const eBookCollection = db.collection("ebooks");
     const usersCollection = db.collection("user"); 
 const bookmarkCollection = db.collection("bookmarks"); 
+const purchasedBookCollection = db.collection("purchased_books")
+
+
+
+
+app.get("/api/purchased-books/reader", async (req, res) => {
+  try {
+    const userEmail = req.query.email;
+    if (!userEmail) {
+      return res.status(400).send({ error: true, message: "Email query parameter is required" });
+    }
+    const result = await purchasedBookCollection
+      .find({ buyerEmail: userEmail, status: "completed" })
+      .sort({ purchasedAt: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
+app.get("/api/purchased-books/writer", async (req, res) => {
+  try {
+    const writerId = req.query.writerId;
+    if (!writerId) {
+      return res.status(400).send({ error: true, message: "Writer ID query parameter is required" });
+    }
+
+   
+    const result = await purchasedBookCollection
+      .find({ writerId: writerId, status: "completed" })
+      .sort({ purchasedAt: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
 
 
 
