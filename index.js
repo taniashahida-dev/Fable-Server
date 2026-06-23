@@ -37,6 +37,29 @@ const purchasedBookCollection = db.collection("purchased_books")
 
 
 
+// 1. Get all users list
+app.get("/api/users", async (req, res) => {
+  const users = await usersCollection.find().toArray();
+  res.send(users);
+});
+
+// 2. Update User Role (PATCH)
+app.patch("/api/users/:id", async (req, res) => {
+  const result = await usersCollection.updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: { role: req.body.role } }
+  );
+  res.send(result);
+});
+
+// 3. Delete User (DELETE)
+app.delete("/api/users/:id", async (req, res) => {
+  const result = await usersCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+  res.send(result);
+});
+
+
+
 app.get("/api/purchased-books/reader", async (req, res) => {
   try {
     const userEmail = req.query.email;
@@ -90,16 +113,32 @@ app.delete("/api/bookmarks/:id", async (req, res) => {
 });
 
 
+
+
+
 app.get("/api/bookmarks", async (req, res) => {
   try {
     const userEmail = req.query.email;
-    if (!userEmail) return res.status(400).send({ error: true, message: "Email query parameter is required" });
-    const result = await bookmarkCollection.find({ userEmail }).toArray();
+    const role = req.query.role; 
+
+    if (!userEmail) {
+      return res.status(400).send({ error: true, message: "Email query parameter is required" });
+    }
+    let query = {};
+
+    if (role === 'writer') {
+      const userName = req.query.name; 
+      query = { writerName: userName };
+    } else {
+      query = { userEmail: userEmail };
+    }
+    const result = await bookmarkCollection.find(query).toArray();
     res.send(result);
   } catch (error) {
     res.status(500).send({ error: true, message: error.message });
   }
 });
+
 
 app.post("/api/bookmarks", async (req, res) => {
   try {
@@ -187,7 +226,6 @@ app.post("/api/bookmarks", async (req, res) => {
       query.status = req.query.status;
     }
 
-    // NEW CONDITION: REGEX SEARCH (Matches book title or writer name)
     if (search) {
       query.$or = [
         { title: { $regex: search, $options: "i" } },
@@ -199,8 +237,6 @@ app.post("/api/bookmarks", async (req, res) => {
     if (category && category !== "all") {
       query.category = { $regex: new RegExp(`^${category}$`, "i") };
     }
-
-    // NEW CONDITION: AVAILABILITY FILTER (Based on salesCount logic)
     if (availability === "in-stock") {
       query.$or = [{ salesCount: { $exists: false } }, { salesCount: 0 }];
     } else if (availability === "sold") {
@@ -250,7 +286,7 @@ app.post("/api/bookmarks", async (req, res) => {
       }
     });
 
-    // API Route to modify / update specific fields of an ebook document dynamically
+   
     app.patch('/api/ebooks/:id', async (req, res) => {
       try {
         const id = req.params.id;
