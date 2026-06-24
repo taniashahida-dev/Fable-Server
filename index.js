@@ -34,8 +34,31 @@ async function run() {
 const bookmarkCollection = db.collection("bookmarks"); 
 const purchasedBookCollection = db.collection("purchased_books")
 
+const writerTransectionCollection =  db.collection('all_transactions')
 
 
+
+
+
+app.get('/api/writer/check-verification/:writerId', async (req, res) => {
+  try {
+    const { writerId } = req.params;
+    const transaction = await writerTransectionCollection.findOne({
+      writerId: writerId,
+      type: 'publishing_fee',
+      status: 'completed'
+    });
+
+    if (transaction) {
+      return res.json({ isVerified: true });
+    } else {
+      return res.json({ isVerified: false });
+    }
+  } catch (error) {
+    console.error('Error checking verification:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 // 1. Get all users list
 app.get("/api/users", async (req, res) => {
@@ -285,7 +308,6 @@ app.post("/api/bookmarks", async (req, res) => {
         res.status(500).send({ error: true, message: error.message });
       }
     });
-
    
     app.patch('/api/ebooks/:id', async (req, res) => {
       try {
