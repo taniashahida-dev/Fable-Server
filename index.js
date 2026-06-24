@@ -39,6 +39,69 @@ const writerTransectionCollection =  db.collection('all_transactions')
 
 
 
+app.get("/api/admin/raw-analytics", async (req, res) => {
+  try {
+    const totalUsers = await usersCollection.countDocuments({ role: "reader" });
+    const totalWriters = await usersCollection.countDocuments({ role: "writer" });
+    const allEbooks = await eBookCollection.find().toArray();
+    
+    // দুটি পেমেন্ট কালেকশন থেকেই সফল লেনদেন তুলে আনা
+    const salesData = await purchasedBookCollection.find({ status: "completed" }).toArray();
+    const feeData = await writerTransectionCollection.find({ status: "completed" }).toArray();
+
+    res.send({ totalUsers, totalWriters, allEbooks, salesData, feeData });
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
+// 📋 Get Combined Transactions (Purchased Books + Publishing Fees) for Admin
+app.get("/api/admin/transactions", async (req, res) => {
+  try {
+
+    const purchases = await purchasedBookCollection
+      .find({ status: "completed" })
+      .toArray();
+
+    const publishingFees = await writerTransectionCollection
+      .find({ status: "completed" })
+      .toArray();
+
+    const formattedPurchases = purchases.map((item) => ({
+      _id: item._id,
+      transactionId: item.stripeSessionId ? item.stripeSessionId.substring(8, 16).toUpperCase() : item._id.toString().substring(0, 8).toUpperCase(),
+      type: "purchase",
+      email: item.buyerEmail,
+      ebookTitle: item.bookName,
+      amount: item.price,
+      date: item.purchasedAt || item.createdAt,
+    }));
+
+    const formattedFees = publishingFees.map((item) => ({
+      _id: item._id,
+      transactionId: item.stripeSessionId ? item.stripeSessionId.substring(8, 16).toUpperCase() : item._id.toString().substring(0, 8).toUpperCase(),
+      type: "publishing_fee",
+      email: item.email,
+      ebookTitle: "Writer Verification Fee", 
+      amount: item.amount,
+      date: item.date || item.createdAt,
+    }));
+
+   
+    const allTransactions = [...formattedPurchases, ...formattedFees].sort(
+      (a, b) => new Date(b.date) - new Date(a.date)
+    );
+
+    res.send(allTransactions);
+  } catch (error) {
+    res.status(500).send({ error: true, message: error.message });
+  }
+});
+
+
+
+
 
 app.get('/api/writer/check-verification/:writerId', async (req, res) => {
   try {
