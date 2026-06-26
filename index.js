@@ -80,9 +80,14 @@ const adminVerify = async (req, res, next) => {
   next();
 };
 
-async function run() {
-  try {
-    await client.connect();
+// async function run() {
+//   try {
+//     await client.connect();
+
+client.connect(() => {
+    console.log('connecting to MOngo db');
+}).catch(console.dir)
+
     const db = client.db("Fable-db");
 
     // Declaring collections ONLY ONCE to avoid server crash
@@ -505,18 +510,20 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!",
-    );
-  } finally {
-    // Keep client connection pool active
-    // await client.close()
-  }
-}
+    // await client.db("admin").command({ ping: 1 });
+//     console.log(
+//       "Pinged your deployment. You successfully connected to MongoDB!",
+//     );
+//   } finally {
+//     // Keep client connection pool active
+//     // await client.close()
+//   }
+// }
 
-run().catch(console.dir);
+// run().catch(console.dir);
 
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
+
+module.exports = app;
