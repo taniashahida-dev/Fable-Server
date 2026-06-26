@@ -28,6 +28,28 @@ const JWKS = createRemoteJWKSet(
   new URL(`${process.env.CLIENT_URL}/api/auth/jwks`),
 );
 
+
+
+// async function run() {
+//   try {
+//     await client.connect();
+
+client.connect(() => {
+    console.log('connecting to MOngo db');
+}).catch(console.dir)
+
+    const db = client.db("Fable-db");
+
+    // Declaring collections ONLY ONCE to avoid server crash
+    const eBookCollection = db.collection("ebooks");
+    const usersCollection = db.collection("user");
+    const bookmarkCollection = db.collection("bookmarks");
+    const purchasedBookCollection = db.collection("purchased_books");
+
+    const writerTransectionCollection = db.collection("all_transactions");
+
+
+
 const verifyToken = async (req, res, next) => {
   const { authorization } = req.headers;
 
@@ -80,23 +102,6 @@ const adminVerify = async (req, res, next) => {
   next();
 };
 
-// async function run() {
-//   try {
-//     await client.connect();
-
-client.connect(() => {
-    console.log('connecting to MOngo db');
-}).catch(console.dir)
-
-    const db = client.db("Fable-db");
-
-    // Declaring collections ONLY ONCE to avoid server crash
-    const eBookCollection = db.collection("ebooks");
-    const usersCollection = db.collection("user");
-    const bookmarkCollection = db.collection("bookmarks");
-    const purchasedBookCollection = db.collection("purchased_books");
-
-    const writerTransectionCollection = db.collection("all_transactions");
 
     app.get(
       "/api/admin/raw-analytics",
