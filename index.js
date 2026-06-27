@@ -447,29 +447,74 @@ const adminVerify = async (req, res, next) => {
     });
 
     // API Route to fetch metadata of a specific standalone ebook document
-    app.get("/api/ebooks/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
+    // app.get("/api/ebooks/:id", async (req, res) => {
+    //   try {
+    //     const id = req.params.id;
 
-        if (!ObjectId.isValid(id)) {
-          return res
-            .status(400)
-            .send({ error: true, message: "Invalid ID format" });
-        }
-        const query = { _id: new ObjectId(id) };
-        const result = await eBookCollection.findOne(query);
+    //     if (!ObjectId.isValid(id)) {
+    //       return res
+    //         .status(400)
+    //         .send({ error: true, message: "Invalid ID format" });
+    //     }
+    //     const query = { _id: new ObjectId(id) };
+    //     const result = await eBookCollection.findOne(query);
 
-        if (!result) {
-          return res
-            .status(404)
-            .send({ error: true, message: "Ebook not found" });
-        }
+    //     if (!result) {
+    //       return res
+    //         .status(404)
+    //         .send({ error: true, message: "Ebook not found" });
+    //     }
 
-        res.send(result);
-      } catch (error) {
-        res.status(500).send({ error: true, message: error.message });
-      }
+    //     res.send(result);
+    //   } catch (error) {
+    //     res.status(500).send({ error: true, message: error.message });
+    //   }
+    // });
+
+app.get("/api/ebooks/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const email = req.query.email;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        error: true,
+        message: "Invalid ID",
+      });
+    }
+
+    const ebook = await eBookCollection.findOne({
+      _id: new ObjectId(id),
     });
+
+    if (!ebook) {
+      return res.status(404).send({
+        error: true,
+        message: "Ebook not found",
+      });
+    }
+
+    let hasPurchased = false;
+
+    if (email) {
+      hasPurchased = await purchasedBookCollection.countDocuments({
+        buyerEmail: email.trim().toLowerCase(),
+        bookId: id,
+        status: "completed",
+      }) > 0;
+    }
+
+    res.send({
+      ...ebook,
+      hasPurchased,
+    });
+  } catch (error) {
+    res.status(500).send({
+      error: true,
+      message: error.message,
+    });
+  }
+});
 
     app.patch(
       "/api/ebooks/:id",
