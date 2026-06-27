@@ -2,8 +2,8 @@
 
 > *RESTful API powering the Fable ebook sharing platform — built with Node.js, Express & MongoDB.*
 
-[![Server Repo](https://img.shields.io/badge/GitHub-Server-181717?style=for-the-badge&logo=github)](https://github.com/taniashahida-dev/Fable-Server/edit/main/README.md)
-[![Live API](https://img.shields.io/badge/Live%20API-Active-brightgreen?style=for-the-badge)](https://fable-server-nu.vercel.app/)
+[![Server Repo](https://img.shields.io/badge/GitHub-Server-181717?style=for-the-badge&logo=github)](https://github.com/taniashahida-dev/Fable-Server)
+[![Live API](https://img.shields.io/badge/Live%20API-Active-brightgreen?style=for-the-badge)](https://fable-server-nu.vercel.app)
 
 ---
 
