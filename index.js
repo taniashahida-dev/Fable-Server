@@ -117,7 +117,7 @@ const adminVerify = async (req, res, next) => {
           });
           const allEbooks = await eBookCollection.find().toArray();
 
-          // দুটি পেমেন্ট কালেকশন থেকেই সফল লেনদেন তুলে আনা
+     
           const salesData = await purchasedBookCollection
             .find({ status: "completed" })
             .toArray();
