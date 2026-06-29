@@ -34,9 +34,14 @@ const JWKS = createRemoteJWKSet(
 //   try {
 //     await client.connect();
 
-client.connect(() => {
-    console.log('connecting to MOngo db');
-}).catch(console.dir)
+client.connect()
+  .then(() => {
+    console.log(" MongoDB Connected");
+  })
+  .catch((err) => {
+    console.error("MongoDB Error:", err);
+  });
+
 
     const db = client.db("Fable-db");
 
