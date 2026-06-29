@@ -2,8 +2,8 @@
 
 > *RESTful API powering the Fable ebook sharing platform — built with Node.js, Express & MongoDB.*
 
-[![Server Repo](https://img.shields.io/badge/GitHub-Server-181717?style=for-the-badge&logo=github)](https://github.com/your-username/fable-server)
-[![Live API](https://img.shields.io/badge/Live%20API-Active-brightgreen?style=for-the-badge)](https://your-api-url.vercel.app)
+[![Server Repo](https://img.shields.io/badge/GitHub-Server-181717?style=for-the-badge&logo=github)](https://github.com/taniashahida-dev/Fable-Server)
+[![Live API](https://img.shields.io/badge/Live%20API-Active-brightgreen?style=for-the-badge)](https://fable-server-nu.vercel.app)
 
 ---
 
@@ -62,8 +62,8 @@ npm start
 
 ## 🔗 Related
 
-- **Frontend Repo:** [fable-client](https://github.com/your-username/fable-client)
-- **Live Site:** [fable.vercel.app](https://your-live-url.vercel.app)
+- **Frontend Repo:** [fable-client](https://github.com/taniashahida-dev/Fable-Client)
+- **Live Site:** [fable.vercel.app](https://fable-bookstore.vercel.app)
 
 ---
 
