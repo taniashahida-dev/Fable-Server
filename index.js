@@ -55,33 +55,64 @@ client.connect()
 
 
 
+const getUserId = (user) => {
+  const id = user?.sub || user?.id;
+  return id ? String(id) : "";
+};
+
+const toIdVariants = (id) => {
+  const strId = String(id || "").trim();
+  if (!strId) return [];
+  return ObjectId.isValid(strId) ? [strId, new ObjectId(strId)] : [strId];
+};
+
 const verifyToken = async (req, res, next) => {
   const { authorization } = req.headers;
 
-  if (!authorization) {
+  if (!authorization || !authorization.startsWith("Bearer ")) {
     return res.status(401).json({
+      error: true,
       message: "Unauthorized",
     });
   }
 
-  const token = authorization.split(" ")[1];
-
-  console.log("TOKEN:", token);
+  const token = authorization.slice(7).trim();
 
   if (!token) {
     return res.status(401).json({
+      error: true,
       message: "Unauthorized",
     });
   }
   try {
     const { payload } = await jwtVerify(token, JWKS);
+
+    if (!payload || (!payload.sub && !payload.id)) {
+      return res.status(401).json({ error: true, message: "Unauthorized" });
+    }
+
+    if (
+      payload.sub &&
+      payload.id &&
+      String(payload.sub) !== String(payload.id)
+    ) {
+      return res.status(401).json({ error: true, message: "Unauthorized" });
+    }
+
     req.user = payload;
 
     next();
   } catch (error) {
-    console.log(error);
-    return res.status(401).json({ msg: "Unauthorized" });
+    console.error("JWT verification failed:", error.message);
+    return res.status(401).json({ error: true, message: "Unauthorized" });
   }
+};
+
+const requireRoles = (...allowedRoles) => (req, res, next) => {
+  if (!req.user || !allowedRoles.includes(req.user.role)) {
+    return res.status(403).json({ error: true, message: "Forbidden" });
+  }
+  next();
 };
 
 const readerVerify = async (req, res, next) => {
@@ -188,25 +219,47 @@ const adminVerify = async (req, res, next) => {
       },
     );
 
-    app.get("/api/writer/check-verification/:writerId", async (req, res) => {
-      try {
-        const { writerId } = req.params;
-        const transaction = await writerTransectionCollection.findOne({
-          writerId: writerId,
-          type: "publishing_fee",
-          status: "completed",
-        });
+    app.get(
+      "/api/writer/check-verification/:writerId",
+      verifyToken,
+      requireRoles("writer", "admin"),
+      async (req, res) => {
+        try {
+          const { writerId } = req.params;
+          const currentUserId = getUserId(req.user);
 
-        if (transaction) {
-          return res.json({ isVerified: true });
-        } else {
-          return res.json({ isVerified: false });
+          if (req.user.role === "writer" && String(writerId) !== currentUserId) {
+            return res.status(403).json({
+              error: true,
+              message:
+                "Forbidden: cannot check another writer's verification status",
+            });
+          }
+
+          const writerIdVariants = toIdVariants(writerId);
+          if (writerIdVariants.length === 0) {
+            return res
+              .status(400)
+              .json({ error: true, message: "Invalid writer ID" });
+          }
+
+          const transaction = await writerTransectionCollection.findOne({
+            writerId: { $in: writerIdVariants },
+            type: "publishing_fee",
+            status: "completed",
+          });
+
+          if (transaction) {
+            return res.json({ isVerified: true });
+          } else {
+            return res.json({ isVerified: false });
+          }
+        } catch (error) {
+          console.error("Error checking verification:", error);
+          res.status(500).json({ error: "Internal Server Error" });
         }
-      } catch (error) {
-        console.error("Error checking verification:", error);
-        res.status(500).json({ error: "Internal Server Error" });
-      }
-    });
+      },
+    );
 
     // 1. Get all users list
     app.get("/api/users", verifyToken, adminVerify, async (req, res) => {
@@ -233,20 +286,49 @@ const adminVerify = async (req, res, next) => {
     app.get(
       "/api/purchased-books/reader",
       verifyToken,
-      readerVerify,
+      requireRoles("reader", "admin"),
       async (req, res) => {
         try {
-          const userEmail = req.query.email;
-          if (!userEmail) {
-            return res
-              .status(400)
-              .send({
+          const requestedEmail = req.query.email
+            ? String(req.query.email).trim()
+            : "";
+          const tokenEmail = String(req.user.email || "")
+            .trim()
+            .toLowerCase();
+
+          if (req.user.role === "reader") {
+            if (!tokenEmail) {
+              return res
+                .status(401)
+                .send({ error: true, message: "Unauthorized" });
+            }
+            if (
+              requestedEmail &&
+              requestedEmail.toLowerCase() !== tokenEmail
+            ) {
+              return res.status(403).send({
                 error: true,
-                message: "Email query parameter is required",
+                message:
+                  "Forbidden: cannot access another reader's purchase history",
               });
+            }
+          } else if (!requestedEmail) {
+            return res.status(400).send({
+              error: true,
+              message: "Email query parameter is required",
+            });
           }
+
+          const targetEmail =
+            req.user.role === "admin"
+              ? requestedEmail
+              : String(req.user.email).trim();
+          const emailVariants = Array.from(
+            new Set([targetEmail, targetEmail.toLowerCase()]),
+          );
+
           const result = await purchasedBookCollection
-            .find({ buyerEmail: userEmail, status: "completed" })
+            .find({ buyerEmail: { $in: emailVariants }, status: "completed" })
             .sort({ purchasedAt: -1 })
             .toArray();
 
@@ -257,28 +339,50 @@ const adminVerify = async (req, res, next) => {
       },
     );
 
-    app.get("/api/purchased-books/writer", async (req, res) => {
-      try {
-        const writerId = req.query.writerId;
-        if (!writerId) {
-          return res
-            .status(400)
-            .send({
+    app.get(
+      "/api/purchased-books/writer",
+      verifyToken,
+      requireRoles("writer", "admin"),
+      async (req, res) => {
+        try {
+          const requestedWriterId = req.query.writerId
+            ? String(req.query.writerId).trim()
+            : "";
+          const currentUserId = getUserId(req.user);
+
+          if (req.user.role === "writer") {
+            if (requestedWriterId && requestedWriterId !== currentUserId) {
+              return res.status(403).send({
+                error: true,
+                message:
+                  "Forbidden: cannot access another writer's sales history",
+              });
+            }
+          } else if (!requestedWriterId) {
+            return res.status(400).send({
               error: true,
               message: "Writer ID query parameter is required",
             });
+          }
+
+          const targetWriterId =
+            req.user.role === "admin" ? requestedWriterId : currentUserId;
+          const writerIdVariants = toIdVariants(targetWriterId);
+
+          const result = await purchasedBookCollection
+            .find({
+              writerId: { $in: writerIdVariants },
+              status: "completed",
+            })
+            .sort({ purchasedAt: -1 })
+            .toArray();
+
+          res.send(result);
+        } catch (error) {
+          res.status(500).send({ error: true, message: error.message });
         }
-
-        const result = await purchasedBookCollection
-          .find({ writerId: writerId, status: "completed" })
-          .sort({ purchasedAt: -1 })
-          .toArray();
-
-        res.send(result);
-      } catch (error) {
-        res.status(500).send({ error: true, message: error.message });
-      }
-    });
+      },
+    );
 
     app.delete("/api/bookmarks/:id", verifyToken,
     readerVerify, async (req, res) => {
@@ -294,26 +398,122 @@ const adminVerify = async (req, res, next) => {
 
     app.get("/api/bookmarks", verifyToken, async (req, res) => {
       try {
-        const userEmail = req.query.email;
+        const userEmail = req.query.email ? String(req.query.email).trim() : "";
         const role = req.query.role;
-
-        if (!userEmail) {
-          return res
-            .status(400)
-            .send({
-              error: true,
-              message: "Email query parameter is required",
-            });
-        }
-        let query = {};
+        const tokenEmail = String(req.user.email || "")
+          .trim()
+          .toLowerCase();
+        const currentUserId = getUserId(req.user);
 
         if (role === "writer") {
-          const userName = req.query.name;
-          query = { writerName: userName };
-        } else {
-          query = { userEmail: userEmail };
+          if (req.user.role !== "writer" && req.user.role !== "admin") {
+            return res.status(403).send({
+              error: true,
+              message:
+                "Forbidden: writer analytics restricted to writers and admins",
+            });
+          }
+
+          if (
+            userEmail &&
+            req.user.role !== "admin" &&
+            userEmail.toLowerCase() !== tokenEmail
+          ) {
+            return res.status(403).send({
+              error: true,
+              message: "Forbidden: email does not match authenticated user",
+            });
+          }
+
+          const requestedWriterId = req.query.writerId
+            ? String(req.query.writerId).trim()
+            : "";
+
+          if (req.user.role === "writer") {
+            if (requestedWriterId && requestedWriterId !== currentUserId) {
+              return res.status(403).send({
+                error: true,
+                message:
+                  "Forbidden: cannot access another writer's bookmark analytics",
+              });
+            }
+          } else if (!requestedWriterId) {
+            return res.status(400).send({
+              error: true,
+              message: "Writer ID query parameter is required",
+            });
+          }
+
+          const targetWriterId =
+            req.user.role === "admin" ? requestedWriterId : currentUserId;
+          const writerIdVariants = toIdVariants(targetWriterId);
+
+          const writerBooks = await eBookCollection
+            .find(
+              { writerId: { $in: writerIdVariants } },
+              { projection: { _id: 1 } },
+            )
+            .toArray();
+          const writerBookIdVariants = writerBooks.flatMap((b) => [
+            b._id.toString(),
+            b._id,
+          ]);
+
+          const legacyNoWriterIdFilter = {
+            $or: [
+              { writerId: { $exists: false } },
+              { writerId: null },
+              { writerId: "" },
+            ],
+          };
+
+          const writerQuery =
+            writerBookIdVariants.length > 0
+              ? {
+                  $or: [
+                    { writerId: { $in: writerIdVariants } },
+                    {
+                      $and: [
+                        { bookId: { $in: writerBookIdVariants } },
+                        legacyNoWriterIdFilter,
+                      ],
+                    },
+                  ],
+                }
+              : { writerId: { $in: writerIdVariants } };
+
+          const result = await bookmarkCollection.find(writerQuery).toArray();
+          return res.send(result);
         }
-        const result = await bookmarkCollection.find(query).toArray();
+
+        if (!userEmail) {
+          return res.status(400).send({
+            error: true,
+            message: "Email query parameter is required",
+          });
+        }
+
+        if (
+          req.user.role !== "admin" &&
+          userEmail.toLowerCase() !== tokenEmail
+        ) {
+          return res.status(403).send({
+            error: true,
+            message: "Forbidden: cannot access another user's bookmarks",
+          });
+        }
+
+        const targetEmail =
+          req.user.role === "admin"
+            ? userEmail
+            : String(req.user.email || userEmail).trim();
+        const emailVariants = Array.from(
+          new Set([targetEmail, targetEmail.toLowerCase()]),
+        );
+
+        const result = await bookmarkCollection
+          .find({ userEmail: { $in: emailVariants } })
+          .toArray();
         res.send(result);
       } catch (error) {
         res.status(500).send({ error: true, message: error.message });
@@ -521,29 +721,171 @@ app.get("/api/ebooks/:id", async (req, res) => {
   }
 });
 
+    const normalizeEbookStatus = (value) => {
+      if (typeof value !== "string") return null;
+      const lower = value.trim().toLowerCase();
+      if (lower === "pending") return "Pending";
+      if (lower === "published") return "published";
+      if (lower === "unpublished") return "unpublished";
+      return null;
+    };
+
     app.patch(
       "/api/ebooks/:id",
       verifyToken,
-      writerVerify,
+      requireRoles("writer", "admin"),
       async (req, res) => {
         try {
           const id = req.params.id;
-          const updateData = req.body;
-
-          const filter = { _id: new ObjectId(id) };
-
-          const updateDoc = {
-            $set: {
-              ...updateData,
-              updatedAt: new Date(),
-            },
-          };
-
-          if (updateData.title) {
-            updateDoc.$set.status = "Pending";
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+              error: true,
+              message: "Invalid ebook ID format",
+            });
           }
 
-          const result = await eBookCollection.updateOne(filter, updateDoc);
+          const filter = { _id: new ObjectId(id) };
+          const existingBook = await eBookCollection.findOne(filter);
+          if (!existingBook) {
+            return res.status(404).send({
+              error: true,
+              message: "Ebook not found",
+            });
+          }
+
+          const updateData = req.body || {};
+          const setFields = {};
+
+          if (req.user.role === "admin") {
+            if (updateData.status !== undefined) {
+              const normalizedStatus = normalizeEbookStatus(updateData.status);
+              if (!normalizedStatus) {
+                return res.status(400).send({
+                  error: true,
+                  message: "Invalid status value",
+                });
+              }
+              setFields.status = normalizedStatus;
+            }
+
+            if (updateData.availabilityStatus !== undefined) {
+              const normalizedAvailability = String(
+                updateData.availabilityStatus,
+              )
+                .trim()
+                .toLowerCase();
+              if (!["available", "sold"].includes(normalizedAvailability)) {
+                return res.status(400).send({
+                  error: true,
+                  message: "Invalid availabilityStatus value",
+                });
+              }
+              setFields.availabilityStatus = normalizedAvailability;
+            }
+
+            if (Object.keys(setFields).length === 0) {
+              return res.status(400).send({
+                error: true,
+                message: "No valid moderation fields provided",
+              });
+            }
+          } else {
+            const currentUserId = getUserId(req.user);
+            if (String(existingBook.writerId || "") !== currentUserId) {
+              return res.status(403).send({
+                error: true,
+                message: "Forbidden: you can only modify your own ebooks",
+              });
+            }
+
+            const protectedFields = [
+              "_id",
+              "writerId",
+              "writerName",
+              "salesCount",
+              "availabilityStatus",
+              "createdAt",
+            ];
+            const attemptedProtected = protectedFields.filter((field) =>
+              Object.prototype.hasOwnProperty.call(updateData, field),
+            );
+            if (attemptedProtected.length > 0) {
+              return res.status(403).send({
+                error: true,
+                message: `Forbidden: cannot modify protected field(s): ${attemptedProtected.join(", ")}`,
+              });
+            }
+
+            const allowedContentFields = [
+              "title",
+              "price",
+              "category",
+              "tags",
+              "description",
+              "coverImage",
+            ];
+
+            for (const field of allowedContentFields) {
+              if (updateData[field] !== undefined) {
+                if (field === "price") {
+                  const parsedPrice = Number(updateData.price);
+                  if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+                    return res.status(400).send({
+                      error: true,
+                      message: "Invalid price value",
+                    });
+                  }
+                  setFields.price = parsedPrice;
+                } else {
+                  setFields[field] = updateData[field];
+                }
+              }
+            }
+
+            if (updateData.status !== undefined) {
+              const requestedStatus = normalizeEbookStatus(updateData.status);
+              if (
+                !requestedStatus ||
+                !["published", "unpublished"].includes(requestedStatus)
+              ) {
+                return res.status(400).send({
+                  error: true,
+                  message:
+                    "Writers can only set status to published or unpublished",
+                });
+              }
+
+              const currentStatus = String(
+                existingBook.status || "Pending",
+              ).toLowerCase();
+              if (!["published", "unpublished"].includes(currentStatus)) {
+                return res.status(403).send({
+                  error: true,
+                  message:
+                    "Pending ebooks must be approved by an admin before changing publish status",
+                });
+              }
+
+              setFields.status = requestedStatus;
+            }
+
+            if (setFields.title !== undefined) {
+              setFields.status = "Pending";
+            }
+
+            if (Object.keys(setFields).length === 0) {
+              return res.status(400).send({
+                error: true,
+                message: "No valid editable fields provided",
+              });
+            }
+          }
+
+          setFields.updatedAt = new Date();
+
+          const result = await eBookCollection.updateOne(filter, {
+            $set: setFields,
+          });
           res.send(result);
         } catch (error) {
           res.status(500).send({ error: true, message: error.message });
@@ -552,17 +894,47 @@ app.get("/api/ebooks/:id", async (req, res) => {
     );
 
     // API Route to remove / delete an ebook permanently from the database index
-    app.delete("/api/ebooks/:id", verifyToken, async (req, res) => {
-      try {
-        const id = req.params.id;
-        const query = { _id: new ObjectId(id) };
+    app.delete(
+      "/api/ebooks/:id",
+      verifyToken,
+      requireRoles("writer", "admin"),
+      async (req, res) => {
+        try {
+          const id = req.params.id;
+          if (!ObjectId.isValid(id)) {
+            return res.status(400).send({
+              error: true,
+              message: "Invalid ebook ID format",
+            });
+          }
 
-        const result = await eBookCollection.deleteOne(query);
-        res.send(result);
-      } catch (error) {
-        res.status(500).send({ error: true, message: error.message });
-      }
-    });
+          const query = { _id: new ObjectId(id) };
+          const existingBook = await eBookCollection.findOne(query);
+
+          if (!existingBook) {
+            return res.status(404).send({
+              error: true,
+              message: "Ebook not found",
+            });
+          }
+
+          if (req.user.role === "writer") {
+            const currentUserId = getUserId(req.user);
+            if (String(existingBook.writerId || "") !== currentUserId) {
+              return res.status(403).send({
+                error: true,
+                message: "Forbidden: you can only delete your own ebooks",
+              });
+            }
+          }
+
+          const result = await eBookCollection.deleteOne(query);
+          res.send(result);
+        } catch (error) {
+          res.status(500).send({ error: true, message: error.message });
+        }
+      },
+    );
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
